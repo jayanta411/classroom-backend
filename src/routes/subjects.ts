@@ -2,8 +2,6 @@ import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
 import express from "express";
 import { departments, subjects } from "../db/schema";
 import { db } from "../db";
-import { get } from "node:http";
-import { count } from "node:console";
 
 const SubjectRouter = express.Router();
 
@@ -11,9 +9,17 @@ const SubjectRouter = express.Router();
 SubjectRouter.get("/", async (req, res) => {
   try {
     // Fetch subjects from the database (placeholder)
-    const { search, department, page = 1, limit = 10 } = req.query;
-    const currentPage = Math.max(1, +page);
-    const limitPerPage = Math.max(1, +limit);
+    const { search, department } = req.query;
+    const rawPage = Array.isArray(req.query.page) ? req.query.page[0] : req.query.page;
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+
+    const parsedPage = parseInt(String(rawPage ?? "1"), 10);
+    const currentPage = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
+
+    const parsedLimit = parseInt(String(rawLimit ?? "10"), 10);
+    let limitPerPage = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 10 : parsedLimit;
+    limitPerPage = Math.min(limitPerPage, 100);
+
     const offset = (currentPage - 1) * limitPerPage;
     const filterConditions = [];
     //If search query exist filter by name or code
@@ -28,7 +34,9 @@ SubjectRouter.get("/", async (req, res) => {
 
     // If department query exist filter by department name
     if (department) {
-      filterConditions.push(ilike(departments.name, `%${department}%`));
+      //escape sql injection characters in department query
+      const deptPattern = `%${String(department).replace(/[%_]/g, "\\$&")}%`;
+      filterConditions.push(ilike(departments.name, deptPattern));
     }
 
     //combine filters using AND if exist
